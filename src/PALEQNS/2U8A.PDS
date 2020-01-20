@@ -1,0 +1,98 @@
+TITLE DMA Interface
+REVISION 2A
+AUTHOR Brent Bolton
+COMPANY Intel Corporation
+DATE 12/21/88
+
+;  This PAL translates 80960 control signals into a form acceptable
+;  to the 82380. It also generates a signal called SMW that is
+;  asserted during slave mode writes to the 82380. SMW is an
+;  input to the ready generator that forces it to delay asserting
+;  READY# to the 80960 for two CLK2 cycles while asserting ready
+;  (RDY380#) to the '380 at the normal time. This is required to
+;  meet the abnormally long (26nS) hold time specified for slave
+;  mode writes to the 82380. 
+;  OOBA# is asserted whenever a program attempts to access an area
+;  of memory that is not supported by a ready generator. When this 
+;  occurs the processor will hang but the condition will be indicated
+;  by an LED driven by OOBA#.
+ 
+CHIP U8A PAL16L8
+;SPEED 15nS
+  
+;PINS
+;1      2       3       4       5
+A27     A28     A29     A30     A31
+
+;6      7       8       9       10
+HLDA    /INTA   /DLY2ADS /CPUW_R GND
+
+;11     12      13      14      15
+NC      /OOBA   /DMAW_R /DMAADS /SMW
+
+;16     17      18      19      20
+/M_IO   /D_C    WSC1    WSC0    VCC
+ 
+;INPUTS: A[27..31]      Address signals used for chip select
+;        HLDA           Hold Acknowledge from 80960KB
+;        INTA#          Interrupt Acknowledge from 80960KB
+;        DLY2ADS#       80960KB Address and Data Strobe delayed by 2 CLK1's
+;        CPUW/R#        80960KB Read/Write command
+
+;BIDIR:  DMAW/R#        82380 Read/Write Command
+;        DMAADS#        82380 Address and Data Strobe
+ 
+;OUTPUTS:OOBA#          Out Of Bounds Access indicator
+;        SMW#           Slave mode write indication
+;        M/IO#          82380 Memory/IO space selector
+;        D/C#           82380 Data/Control selector
+;        WSC[0..1]      82380 Wait State Generator Control
+
+EQUATIONS
+
+DMAW_R.TRST = /HLDA                                 ;Enable in slave mode.
+
+DMAW_R = CPUW_R * /A31 * /A30 * /A29 * A28 * A27    ;Assert on 82380 slave
+                                                    ; mode reads.
+        + INTA                                      ;Assert read on
+                                                    ; interrupt ack.
+
+DMAADS.TRST = /HLDA                                 ;Enable in slave mode.
+    
+DMAADS = DLY2ADS * /A31 * /A30 * /A29 * A28 * A27   ;Generate delayed DMA
+        + DLY2ADS * /A31 * /A30 * A29 * /A28 * /A27 ; ADS# on slave mode
+        + DLY2ADS * /A31 * /A30 * A29 * /A28 * A27  ; accesses, accesses
+        + DLY2ADS * /A31 * /A30 * A29 * A28 * /A27  ; needing ready gen.,
+                                                    ; or interrupt ack.
+        + DLY2ADS * INTA                            ; cycles.
+
+OOBA = /A31 * /A30 * A29 * A28 * A27                ;Assert on User Space
+                                                    ; 1 accesses.
+     + A31                                          ;Assert on all accesses
+     + A30                                          ; where A[30..31] /=00.
+
+SMW = /CPUW_R * /A31 * /A30 * /A29 * A28 * A27      ;Assert on slave mode
+                                                    ; writes.
+
+M_IO.TRST = /HLDA                                   ;Enable in slave mode.
+
+M_IO = /A31 * /A30 * /A29 * A28 * A27               ;Select IO space
+                                                    ; in slave mode.
+     + INTA                                         ;Assert to indicate
+                                                    ; interrupt ack.
+
+D_C.TRST = /HLDA                                    ;Enable in slave mode.
+
+D_C = INTA                                          ;Assert to indicate
+                                                    ; interrupt ack.
+
+;82380 Wait state generator enabled on Serial Port accesses
+; (WSC(1:0) = 00), CSR accesses (WSC(1:0) = 01), and User address
+; space 0 accesses (WSC(1:0) = 10). WSC(1:0) = 11 disables the 
+; 82380 address generator.
+
+/WSC0 = /A31 * /A30 * A29 * /A28 * /A27             ;IOSEL#
+      + /A31 * /A30 * A29 * A28 * /A27              ;US0SEL#
+
+/WSC1 = /A31 * /A30 * A29 * /A28 * /A27             ;IOSEL#
+      + /A31 * /A30 * A29 * /A28 * A27              ;CSRSEL#

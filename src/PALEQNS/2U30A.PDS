@@ -1,0 +1,96 @@
+TITLE Bus Command Generation
+REVISION A
+AUTHOR Brent Bolton
+COMPANY Intel Corporation
+DATE 2/1/89
+
+;  This device generates read and write commands for devices attached to
+;  the QT960's bus. It also synthesizes a data enable signal, DEN#, that 
+;  is asserted during all data cycles. It is necessary to synthesize this
+;  signal since the 82380 doesn't provide it and the CPUDEN# signal from
+;  the 80960KB doesn't meet the setup time requirement for PAL U25, the 
+;  ready generator.
+;  The read command timing is optimized for both DMA and CPU bus cycles.
+;  The DMA controller needs an early read assertion since it is able to
+;  start its bus cycles about a half clock earlier than the CPU due to
+;  its non-multiplexed bus. The CPU requires that read be asserted later
+;  to allow time for chip select logic to switch, otherwise bus conflicts
+;  could occur. Also, the 82510 serial chip requires that its read command
+;  be asserted at least 7nS after addresses and chip select are stable. In
+;  order to meet this requirement under all conditions a special read
+;  command signal is generated for the 82510 that is asserted one
+;  CLK1 edge after the normal read command from both the DMA and CPU.
+ 
+CHIP 2U30A PAL16R4
+;SPEED 10nS
+  
+;PINS
+;1      2       3       4       5
+ CLK2   /PH1    /READY  /DMAW_R /CPUW_R
+
+;6      7       8       9       10
+/CPUADS /DMAADS /CPUDEN HLDA    GND
+
+;11     12      13      14      15
+ OE     /HLDA_   /WR     NC      /RD510
+
+;16     17      18      19      20
+/WCMD   /DEN    /RD     BURST   VCC
+ 
+;INPUTS: CLK2           System clock
+;        PH1#           Phase 1 of bus clock (overlaps CLK2 edges B and C)
+;        READY#         Ready input to CPU
+;        DMAW/R#        82380 Read/Write command
+;        CPUW/R#        80960KB Read/Write command
+;        CPUADS#        80960KB Address and Data Strobe
+;        DMAADS#        82380 Address and Data Strobe
+;        CPUDEN#        80960KB Data Enable
+;        HLDA           Hold Acknowledge from 80960KB
+;        BURST          Burst cycle indication
+
+;OUTPUTS:HLDA#          Inverted HLDA used to drive LED
+;        WR#            Bus write clock (slow devices only)
+;        RD510#         Bus read command (timing optimized for 82510)
+;        WCMD#          Bus write command
+;        DEN#           Combined Data Enable (CPUDEN# + DMADEN#)
+;        RD#            Bus read command (timing optimized for DMA)
+
+EQUATIONS
+
+HLDA_ = HLDA                                ;Invert HLDA
+
+WR = WCMD * /READY                          ;Assert and de-assert on C
+
+RD510 := DMAW_R * DMAADS * HLDA * /PH1      ;Assert end of Ta in
+                                            ; DMA bus cycle.
+       + DMAW_R * /DMAADS * HLDA * /READY   ;Assert during DMA bus
+                * /PH1                      ; cycles.
+       + CPUW_R * /READY * /PH1             ;Assert one clock into Td
+                                            ; during CPU bus cycles. 
+                                            ; edge.
+       + RD510 * PH1                        ;Hold on C edge.
+
+WCMD := CPUADS * /CPUDEN * /CPUW_R * /PH1   ;Assert, end of Ta (CPU cycle).
+      + DMAADS * HLDA * /DMAW_R * /PH1      ;Assert, end of Ta (DMA cycle)
+      + CPUDEN * BURST * /CPUW_R * /PH1     ;Assert, burst cycles (CPU).
+      + CPUDEN * /BURST * /READY * /CPUW_R  ;Assert, last cycle (CPU).
+                * /PH1                      ;
+      + /DMAADS * HLDA * /READY * /DMAW_R   ;Assert, DMA cycles.
+                * /PH1                      ;
+      + WCMD * PH1                          ;Hold on C edge.
+
+DEN := CPUADS * /CPUDEN * /PH1              ;Assert end of Ta in
+                                            ; CPU bus cycle.
+     + DMAADS * HLDA * /PH1                 ;Assert end of Ta in
+                                            ; DMA bus cycle.
+     + CPUDEN * BURST * /PH1                ;Assert during burst
+                                            ; cycles.
+     + CPUDEN * /BURST * /READY * /PH1      ;Assert during last
+                                            ; cycle.
+     + /DMAADS * HLDA * /READY * /PH1       ;Assert during DMA bus
+                                            ; cycles.
+     + DEN * PH1                            ;Hold on C edge.
+
+RD.TRST = HLDA                              ;Enable when DMA is bus master.
+                                            
+RD = DMAW_R * HLDA                          ;Assert during DMA read cycles.

@@ -1,0 +1,170 @@
+DESIGNER Brent Bolton
+COMPANY Intel Corporation
+DATE 2/9/89
+PART NUMBER 2U6B
+REVISION B
+EPLD TYPE 5C060
+TITLE Control and Status Registers
+OPTIONS: TURBO=ON
+
+%REVISION HISTORY
+  rev. B incorporates ECO# 001
+%
+
+%  This EPLD implements seven CSRs that: (1) contain bits to drive the 
+   four user LEDs; (2) specify the number of wait states to be inserted
+   into SRAM cycles; (3) cause a wait state to be inserted into SRAM write
+   cycles when wait states are set to zero; (4) contain the value of a
+   test point pin; and (5) indicate the type of the last board reset--
+   power-up, external signal, or 82380 CPU reset.
+%
+
+PART: 5C060
+
+INPUTS: WR#@1 WR_#@13 RD#@2 CSRSEL#@11 RESET@14 A2@23 A3@3 A4@4 TESTPT#@22
+
+OUTPUTS: DB0@5 DB1@6 USR0@7 USR1@8 USR2@9 USR3@10 RSTFLG1@15 RSTFLG0@16 
+         WRSTR#@17 SBWAIT1#@18 SBWAIT0#@19 S1WAIT1#@20 S1WAIT0#@21
+ 
+%INPUTS: WR#            Write command, used as clock
+         RD#            Read command
+         CSRSEL#        CSR select -- decoded from address 28000000
+         RESET          System reset
+         A[2..4]        Address bits
+         TESTPT#        Test point input
+
+ BIDIR:  DB[0..1]       Data bus
+
+ OUTPUTS:RSTFLG[0..1]  Reset type flags
+         WRSTR#         Write stretch -- allows zero wait state reads
+                         along with one wait state writes
+         SBWAIT[0..1]   Burst cycle SRAM wait states -- called /SBW
+         S1WAIT[0..1]   First cycle SRAM wait states -- called /S1W
+         USRLED[0..3]   User LEDs:0 and 1 are green, 2 and 3 are red        
+%
+
+NETWORK:
+
+CLOCK0 = INP(WR#)
+CLOCK1 = INP(WR_#)
+RDn = INP(RD#)
+CSRSELn = INP(CSRSEL#)
+RESET = INP(RESET)
+A2 = INP(A2)
+A3 = INP(A3)
+A4 = INP(A4)
+TESTPTn = INP(TESTPT#)
+DB0,DB0f = COIF(DB0c,DB0e)
+DB1,DB1f = COIF(DB1c,DB1e)
+USR0,USR0f = RORF(USR0d,CLOCK0,RESET,,)
+USR1,USR1f = RORF(USR1d,CLOCK0,RESET,,)
+USR2,USR2f = RORF(USR2d,CLOCK0,RESET,,)
+USR3,USR3f = RORF(USR3d,CLOCK0,RESET,,)
+RSTFLG0,RSTFLG0f = RORF(RSTFLG0d,CLOCK1,,,)
+RSTFLG1,RSTFLG1f = RORF(RSTFLG1d,CLOCK1,RESET,,)
+WRSTR#,WRSTRnf = RORF(WRSTRnd,CLOCK1,RESET,,)
+SBWAIT0#,SBW0nf = RORF(SBW0nd,CLOCK1,RESET,,)
+SBWAIT1#,SBW1nf = RORF(SBW1nd,CLOCK1,RESET,,)
+S1WAIT0#,S1W0nf = RORF(S1W0nd,CLOCK1,RESET,,)
+S1WAIT1#,S1W1nf = RORF(S1W1nd,CLOCK1,RESET,,)
+
+EQUATIONS:
+
+DB1e = /RDn * /CSRSELn;                     %Enable on CSR read.        %
+                                      
+DB1c = /A4 * /A3 * /A2 * /USR1f             %Read user LED 1 at address
+                                             28000000.                  %
+     + /A4 * /A3 * A2 * /USR3f              %Read user LED 3 at address
+                                             28000004.                  %
+     + /A4 * A3 * /A2 * /SBW1nf             %Read SRAM burst wait states
+                                             at address 28000008.       %
+     + /A4 * A3 * A2 * /S1W1nf              %Read SRAM first wait states
+                                             at address 2800000C.       %
+     + A4 * /A3 * A2 * RSTFLG1f;            %Read reset flag at address
+                                             28000014.                  %
+
+DB0e = /RDn * /CSRSELn;                     %Enable on CSR read.        %
+                                      
+DB0c = /A4 * /A3 * /A2 * /USR0f             %Read user LED 0 at address
+                                             28000000.                  %
+     + /A4 * /A3 * A2 * /USR2f              %Read user LED 2 at address
+                                             28000004.                  %
+     + /A4 * A3 * /A2 * /SBW0nf             %Read SRAM burst wait states
+                                             at address 28000008.       %
+     + /A4 * A3 * A2 * /S1W0nf              %Read SRAM first wait states
+                                             at address 2800000C.       %
+     + A4 * /A3 * /A2 * /WRSTRnf            %Read write stretch bit at
+                                             address 28000010.          %
+     + A4 * /A3 * A2 * RSTFLG0f             %Read reset flag at address
+                                             28000014.                  %
+     + A4 * A3 * /A2 * TESTPT;              %Read test point value at
+                                             address 28000018.          %
+
+USR0d = /CSRSELn * /A4 * /A3 * /A2 * /DB0f  %Write user LED 0.          %
+      + USR0f * CSRSELn                     %Hold                       %
+      + USR0f * A4                          %Hold                       %
+      + USR0f * A3                          %Hold                       %
+      + USR0f * A2;                         %Hold                       %
+
+USR1d = /CSRSELn * /A4 * /A3 * /A2 * /DB1f  %Write user LED 1.          %
+      + USR1f * CSRSELn                     %Hold                       %
+      + USR1f * A4                          %Hold                       %
+      + USR1f * A3                          %Hold                       %
+      + USR1f * A2;                         %Hold                       %
+
+USR2d = /CSRSELn * /A4 * /A3 * A2 * /DB0f   %Write user LED 2.          %
+      + USR2f * CSRSELn                     %Hold                       %
+      + USR2f * A4                          %Hold                       %
+      + USR2f * A3                          %Hold                       %
+      + USR2f * /A2;                        %Hold                       %
+
+USR3d = /CSRSELn * /A4 * /A3 * A2 * /DB1f   %Write user LED 3.          %
+      + USR3f * CSRSELn                     %Hold                       %
+      + USR3f * A4                          %Hold                       %
+      + USR3f * A3                          %Hold                       %
+      + USR3f * /A2;                        %Hold                       %
+
+RSTFLG0d = /CSRSELn * A4 * /A3 * A2 * DB0f  %Write reset flag 0.        %
+         + RSTFLG0f * CSRSELn               %Hold                       %
+         + RSTFLG0f * /A4                   %Hold                       %
+         + RSTFLG0f * A3                    %Hold                       %
+         + RSTFLG0f * /A2;                  %Hold                       %
+
+RSTFLG1d = /CSRSELn * A4 * /A3 * A2 * DB1f  %Write reset flag 1.        %
+         + RSTFLG1f * CSRSELn               %Hold                       %
+         + RSTFLG1f * /A4                   %Hold                       %
+         + RSTFLG1f * A3                    %Hold                       %
+         + RSTFLG1f * /A2;                  %Hold                       %
+
+WRSTRnd = /(/CSRSELn * A4 * /A3 * /A2       %Write write stretch bit.   %
+                * DB0f
+        + /WRSTRnf * CSRSELn                %Hold                       %
+        + /WRSTRnf * /A4                    %Hold                       %
+        + /WRSTRnf * A3                     %Hold                       %
+        + /WRSTRnf * A2);                   %Hold                       %
+
+SBW0nd = /(/CSRSELn * /A4 * A3 * /A2 * DB0f %Write burst wait states.   %
+         + /SBW0nf * CSRSELn                %Hold                       %
+         + /SBW0nf * A4                     %Hold                       %
+         + /SBW0nf * /A3                    %Hold                       %
+         + /SBW0nf * A2);                   %Hold                       %
+
+SBW1nd = /(/CSRSELn * /A4 * A3 * /A2 * DB1f %Write burst wait states.   %
+         + /SBW1nf * CSRSELn                %Hold                       %
+         + /SBW1nf * A4                     %Hold                       %
+         + /SBW1nf * /A3                    %Hold                       %
+         + /SBW1nf * A2);                   %Hold                       %
+
+S1W0nd = /(/CSRSELn * /A4 * A3 * A2 * DB0f  %Write first wait states.   %
+         + /S1W0nf * CSRSELn                %Hold                       %
+         + /S1W0nf * A4                     %Hold                       %
+         + /S1W0nf * /A3                    %Hold                       %
+         + /S1W0nf * /A2);                  %Hold                       %
+
+S1W1nd = /(/CSRSELn * /A4 * A3 * A2 * DB1f  %Write first wait states.   %
+         + /S1W1nf * CSRSELn                %Hold                       %
+         + /S1W1nf * A4                     %Hold                       %
+         + /S1W1nf * /A3                    %Hold                       %
+         + /S1W1nf * /A2);                  %Hold                       %
+
+END$

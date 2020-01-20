@@ -1,0 +1,87 @@
+TITLE Ready Generator 
+REVISION 2A
+AUTHOR Brent Bolton
+COMPANY Intel Corporation
+DATE 12/21/88
+
+; This PAL implements the final stage of a "normally ready" ready
+; generator. It accepts as inputs the outputs of first stage ready
+; generators whose outputs are valid on the A edge of CLK2. This PAL
+; then combines these outputs with chip select signals (to decide
+; which output to use) and makes a decision on whether to deassert
+; READY# on the C edge of CLK2. Making READY# synchronous with the 
+; C edge of CLK2 allows it to serve also as a write clock for slow
+; (1 or more wait states) memories or peripherals. A separate ready,
+; RDY380#, is generated for input to the 82380. RDY380# is the same as
+; READY# except at the end of slave mode writes to the 82380 when READY#
+; is asserted one CLK1 later than RDY380#. This allows the 80960 to meet
+; the 82380's write hold time specification without using latching 
+; transceivers.
+ 
+CHIP U25A PAL16R4
+;SPEED 10nS
+  
+;PINS
+;1      2       3       4       5
+CLK2    /PH1    /RAMSEL /DEN    /EXRDY
+
+;6      7       8       9       10
+/READYO /ERDY   /FRDY   /SRDY   GND
+
+;11     12      13      14      15
+/OE     NC      /SMW    /SRDO   /DRDO
+
+;16     17      18      19      20
+/RDY380 /READY  /EPRSEL /FSHSEL VCC
+ 
+;INPUTS: CLK2           Processor clock
+;        PH1#           Phase 1 of bus cycle (overlaps CLK2 edges B and C)
+;        RAMSEL#        SRAM chip select
+;        DEN#           Combined Data Enable (CPUDEN# + DMADEN#)
+;        EXRDY#         External ready from user logic
+;        READYO#        Output from 82380 Ready Generator
+;        ERDY#          High speed EPROM ready
+;        FRDY#          Flash EPROM ready
+;        SRDY#          Static RAM ready
+;        SMW#           Slave Mode Write
+;        EPRSEL#        High speed EPROM chip select
+;        FSHSEL#        Flash EPROM chip select
+
+;OUTPUTS:READY#         Ready input to 80960KB and bus control logic.
+;                       Timing allows use as write clock.
+;        RDY380#        Ready input to the 82380.
+;        SRDO#          READYO# Synchronized to A edge of CLK2
+;        DRDO#          SREADYO# delayed by one CLK1
+
+EQUATIONS
+                                                
+READY := EPRSEL * ERDY * PH1                    ;High speed EPROM ready.
+       + FSHSEL * FRDY * PH1                    ;Flash EPROM ready.
+       + RAMSEL * SRDY * PH1                    ;SRAM ready.
+       + SRDO * /SMW * PH1                      ;82380 Ready Generator
+                                                ; ready (no SMW).
+       + DRDO * SMW * PH1                       ;82380 Ready Generator
+                                                ; ready (SMW).
+       + EXRDY * PH1                            ;External ready.
+       + READY * /PH1 * DEN                     ;Hold on A edge during
+                                                ; accesses.
+       + /DEN                                   ;Set to normally ready.
+
+RDY380 := EPRSEL * ERDY * PH1                   ;High speed EPROM ready.
+        + FSHSEL * FRDY * PH1                   ;Flash EPROM ready.
+        + RAMSEL * SRDY * PH1                   ;SRAM ready.
+        + SRDO * PH1                            ;82380 Ready Generator
+                                                ; ready.
+        + EXRDY * PH1                           ;External ready.
+        + READY * /PH1 * DEN                    ;Hold on A edge during
+                                                ; accesses.
+        + /DEN                                  ;Set to normally ready.
+
+; SRDO# is READYO# synchronized to the A edge of CLK2.
+; DRDO# is SRDO# delayed by one CLK1.
+
+SRDO := READYO * /PH1                           ;Load on A edge.
+      + SRDO * PH1                              ;Hold on C edge.
+
+DRDO := SRDO * /PH1                             ;Delay by 1 CLK1.
+      + DRDO * PH1                              ;Hold on C edge.

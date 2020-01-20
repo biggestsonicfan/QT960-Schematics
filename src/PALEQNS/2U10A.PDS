@@ -1,0 +1,79 @@
+TITLE CPU Byte Enable Latch
+REVISION A
+AUTHOR Brent Bolton
+COMPANY Intel Corporation
+DATE 2/1/89
+
+;  This PAL is latches the byte enable signals from the CPU. On 
+;  slave mode accesses to the 82380, byte enables 0 and 1 are swapped
+;  with byte enables 2 and 3 in response to the A16 and DMASEL# inputs.
+;  When FAILURE# is asserted, LBE#3 is driven low. This is required
+;  to cause the 82380 to come out of reset in the correct mode.
+ 
+CHIP 2U10A PAL16R4
+;SPEED 10nS
+  
+;PINS
+;1      2       3       4       5
+ CLK2   /PH1    /READY  /DLYADS /DMASEL
+
+;6      7       8       9       10
+/BE0    /BE1    /BE2    /BE3    GND
+
+;11     12      13      14      15
+HLDA    A16     NC      /LBE3   /LBE2
+
+;16     17      18      19      20
+/LBE1   /LBE0   NC      /FAILURE VCC
+ 
+;INPUTS: CLK2           System clock
+;        PH1#           Phase 1 of bus clock (overlaps CLK2 edges B and C)
+;        READY#         Ready input to CPU
+;        DLYADS#        CPUADS# delayed by one CLK1
+;        DMASEL#        82380 slave mode chip select
+;        BE#[0..3]      CPU Byte Enables
+;        A16            Address Bus bit 16
+;        FAILURE#       CPU Failure/Self Test in progress
+
+;OUTPUTS:LBE#[0..3]     Latched Byte Enables
+
+EQUATIONS
+
+;Byte enables are latched whenever READY is asserted on a CLK1 edge. This
+; means that new byte enables are latched at the end of Ta and at the end
+; of each Td cycle. Latching at the end of Ta works because of the 
+; normally ready, ready generator. Since 82380 byte enables don't need
+; latching the LBE outputs of this PAL are only enabled when the 80960KB
+; is the bus master. DMASEL * A16 * DLYADS causes LBE[2..3] to be swapped
+; with LBE[0..1].
+                          
+LBE3 := BE3 * READY * /PH1                  ;Load.
+      + LBE1 * DMASEL * A16 * DLYADS * /PH1 ;Swap.
+      + LBE3 * /READY * /DMASEL * /PH1      ;Hold.
+      + LBE3 * /READY * /A16 * /PH1         ;Hold.
+      + LBE3 * /READY * /DLYADS * /PH1      ;Hold.
+      + FAILURE * /PH1                      ;Assert during reset.
+      + LBE3 * PH1                          ;Hold on C edge.
+                        
+LBE2 := BE2 * READY * /PH1                  ;Load.
+      + LBE0 * DMASEL * A16 * DLYADS * /PH1 ;Swap.
+      + LBE2 * /READY * /DMASEL * /PH1      ;Hold.
+      + LBE2 * /READY * /A16 * /PH1         ;Hold.
+      + LBE2 * /READY * /DLYADS * /PH1      ;Hold..
+      + LBE2 * PH1                          ;Hold on C edge.
+                         
+LBE1 := BE1 * READY * /PH1                  ;Load.
+      + LBE3 * DMASEL * A16 * DLYADS * /PH1 ;Swap.
+      + LBE1 * /READY * /DMASEL * /PH1      ;Hold.
+      + LBE1 * /READY * /A16 * /PH1         ;Hold.
+      + LBE1 * /READY * /DLYADS * /PH1      ;Hold..
+      + LBE1 * PH1                          ;Hold on C edge. 
+                       
+LBE0 := BE0 * READY * /PH1                  ;Load.
+      + LBE2 * DMASEL * A16 * DLYADS * /PH1 ;Swap.
+      + LBE0 * /READY * /DMASEL * /PH1      ;Hold.
+      + LBE0 * /READY * /A16 * /PH1         ;Hold.
+      + LBE0 * /READY * /DLYADS * /PH1      ;Hold..
+      + LBE0 * PH1                          ;Hold on C edge.
+
+

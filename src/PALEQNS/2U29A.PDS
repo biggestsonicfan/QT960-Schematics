@@ -1,0 +1,82 @@
+TITLE Burst Control and Interleaving Address Generation
+REVISION A
+AUTHOR Brent Bolton
+COMPANY Intel Corporation
+DATE 2/1/89
+
+;  This device contains the burst address up counter, burst length
+;  down counter, and low order address bit generation for the
+;  interleaved high speed EPROMs. It also generates a version of the
+;  Read Command with timing optimized for CPU accesses.
+ 
+CHIP 2U29A PAL16R6
+;SPEED 10nS
+  
+;PINS
+;1      2       3       4       5
+ CLK2   /PH1    /CPUADS /DEN    /EPRSEL
+
+;6      7       8       9       10
+ DB0    DB1     DB2     DB3     GND
+
+;11     12      13      14      15
+ HLDA   /CPUW_R /RD     A3_1    A3
+
+;16     17      18      19      20
+ A2     CNT1    CNT0    /READY  VCC
+ 
+;INPUTS: CLK2           System clock
+;        PH1#           Phase 1 of bus clock (overlaps CLK2 edges B and C)
+;        CPUADS#        80960KB Address and Data Strobe
+;        DEN#           Combined Data Enable (CPUDEN# + DMADEN#)
+;        EPRSEL#        High Speed EPROM chip select
+;        DB[0..3]       80960KB multiplexed address and data bus
+;        HLDA           Hold acknowledge from 80960KB. Disables registered
+;                        outputs when 82380 is bus master.
+;        CPUW/R#        CPU Write/Read-not command
+;        READY#         Ready input to CPU
+
+;OUTPUTS:RD#            Bus Read Command--timing optimized for CPU
+;        A3_1           A3 for high speed EPROM bank 1
+;        A[2..3]        Burst address bits of A[0..31]
+;        CNT[0..1]      Burst length count
+
+EQUATIONS
+
+RD := CPUADS * /DEN * CPUW_R * /PH1         ;Assert end of Ta in
+                                            ; CPU bus cycle.
+    + DEN * CNT1 * CPUW_R * /PH1            ;Assert during burst
+    + DEN * CNT0 * CPUW_R * /PH1            ; cycles.
+    + DEN * /CNT1 * /CNT0 * /READY          ;Assert during last
+            * CPUW_R * /PH1                 ; cycle.
+    + RD * PH1                              ;Hold on C edge.
+
+/A3_1 := CPUADS * /DEN * /DB3 * /PH1        ;Load in Ta.
+       + /A3_1 * /A2 * DEN * EPRSEL * /PH1  ;Hold during 00 access.
+       + /A3_1 * A2 * DEN * /READY * EPRSEL ;Hold during 01 access.
+                * /PH1                      ;
+       + /A3_1 * PH1                        ;Hold on C edge.
+
+/A3 := CPUADS * /DEN * /DB3 * /PH1          ;Load during Ta.
+     + /A3 * A2 * DEN * /READY * /EPRSEL    ;Hold during 01 access,
+                * /PH1                      ; normal burst.
+     + /A3 * /A2 * DEN * /EPRSEL * /PH1     ;Hold during 00 access,
+                                            ; normal burst.
+     + /A3 * /A2 * DEN * /READY * EPRSEL    ;Hold during 00 access,
+                * /PH1                      ; interleaved burst.
+     + /A3 * PH1                            ;Hold on C edge.
+
+/A2 := CPUADS * /DEN * /DB2 * /PH1          ;Load during Ta.
+     + A2 * DEN * READY * /PH1              ;Increment.
+     + /A2 * DEN * /READY * /PH1            ;Hold.
+     + /A2 * PH1                            ;Hold on C edge.
+
+/CNT1 := CPUADS * /DEN * /DB1 * /PH1        ;Load during Ta.
+       + CNT1 * /CNT0 * DEN * READY * /PH1  ;Decrement.
+       + /CNT1 * DEN * /PH1                 ;Hold.
+       + /CNT1 * PH1                        ;Hold on C edge.
+
+/CNT0 := CPUADS * /DEN * /DB0 * /PH1        ;Load during Ta.
+       + CNT0 * DEN * READY * /PH1          ;Decrement.
+       + /CNT0 * DEN * /READY * /PH1        ;Hold.
+       + /CNT0 * PH1                        ;Hold on C edge.

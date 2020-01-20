@@ -1,0 +1,115 @@
+TITLE SRAM Wait State Counter
+REVISION C
+AUTHOR Brent Bolton
+COMPANY Intel Corporation
+DATE 12/21/89
+
+;REVISION HISTORY
+; rev. B incorporates: ECO# 001
+; rev. C incorporates: ECO# 009
+
+;  This device implements the two bit wait state counter for SRAM.
+;  This counter is loaded with two different values. Prior
+;  to the start of a bus cycle the counter contains the number
+;  of wait states to be inserted into the first data cycle (or
+;  in the case of the 82380 in master mode, the only data cycle). One
+;  CLK1 prior to the end of the first data cycle the counter is
+;  loaded with the number of wait states to be inserted into the burst
+;  data cycles. The counter is also reloaded one CLK1 before the end 
+;  of the burst data cycles. The outputs of these counters are decoded to
+;  generate ready signals for input to PAL U25. The WRSTR input signal
+;  causes an additional wait state to be inserted on CPU write cycles
+;  that would otherwise be zero wait state. TCLK is a clock synchronized
+;  to "C" edge of CLK2 and running at half of the bus frequency.
+ 
+CHIP 2U26C PAL16R4
+;SPEED 15nS
+  
+;PINS
+;1      2       3       4       5
+CLK2    /PH1    /CPUADS /DMAADS HLDA
+
+;6      7       8       9       10
+/S1W0  /S1W1    /SBW0   /SBW1   GND
+
+;11     12      13      14      15
+/OE     /WRSTR  NC      SCNT1   SCNT0
+
+;16     17      18      19      20
+/SRDY   TCLK    /DEN    /CPUW_R VCC
+ 
+;INPUTS: CLK2           System clock
+;        PH1#           Phase 1 of bus cycle (overlaps CLK2 edges B and C)
+;        CPUADS#        80960KB Address and Data Strobe
+;        DMAADS#        82380 Address and Data Strobe
+;        HLDA           Hold acknowledge from 80960KB. Indicates 82380
+;                       master mode when asserted.
+;        S1WAIT[0..1]   SRAM first cycle wait state count
+;        SBWAIT[0..1]   SRAM burst cycle wait state count
+;        WRSTR#         Write Stretch enable
+;        DEN#           Combined Data Enable (CPUDEN# + DMADEN#)
+;        CPUW/R#        CPU write / read not command
+
+;OUTPUTS:SCNT[0..1]     SRAM wait state counter
+;        SRDY#          SRAM ready
+;        TCLK           82380 Timer clock
+
+EQUATIONS
+
+/SCNT1 := S1W1 * /S1W0 * /DEN * /PH1        ;Load and decrement first
+                                            ; cycle count at end of Ta.
+        + /S1W1 * S1W0 * /DEN * /PH1        ;Load and hold first cycle
+                                            ; count at end of Ta.
+        + /SBW1 * CPUADS * /DEN             ;Load burst cycle count at
+                * /S1W1 * /S1W0             ; end of Ta if first cycle
+                * /PH1                      ; is 0 wait states.
+        + /SBW1 * DEN * /SCNT1 * /SCNT0     ;Load burst cycle count
+                * /PH1                      ; when SCNT=00 in Td.
+        + SCNT1 * /SCNT0 * DEN * /PH1       ;Decrement first or burst
+                                            ; cycle count in Td.
+        + /SCNT1 * SCNT0 * DEN * /PH1       ;Hold first or burst cycle
+                                            ; count in Td.
+        + /SCNT1 * PH1                      ;Hold on C edge.
+
+/SCNT0 := S1W0 * /DEN * /PH1                ;Load and decrement first 
+                                            ; cycle count at end of Ta.
+        + /S1W1 * /S1W0 * CPUADS            ;Load 1 into first cycle count
+                * /DEN * WRSTR * /CPUW_R    ; and decrement if S1WAIT=00
+                * /PH1                      ; & write stretching enabled
+                                            ; & a write operation occurs.
+        + /SBW0 * CPUADS * /DEN             ;Load burst cycle count at
+                * /S1W1 * /S1W0             ; end of Ta if first cycle
+                * /WRSTR * /PH1             ; is 0 wait states (write
+                                            ; stretching disabled).
+        + /SBW0 * CPUADS * /DEN             ;Load burst cycle count at
+                * /S1W1 * /S1W0             ; end of Ta if first cycle
+                * WRSTR * CPUW_R * /PH1     ; is 0 wait states (write
+                                            ; stretching enabled, read
+                                            ; operation).
+        + /SBW0 * DEN * /SCNT1 * /SCNT0     ;Load burst cycle count
+                * /WRSTR * /PH1             ; when SCNT=00 in Td (write
+                                            ; stretching disabled).
+        + /SBW0 * DEN * /SCNT1 * /SCNT0     ;Load burst cycle count
+                * WRSTR * CPUW_R * /PH1     ; when SCNT=00 in Td (write
+                                            ; stretching enabled, read
+                                            ; operation).
+        + SCNT0 * DEN * /PH1                ;Decrement first or burst
+                                            ; cycle count in Td.
+        + /SCNT0 * PH1                      ;Hold on C edge.
+
+SRDY := /SCNT1 * /SCNT0 * DEN * /PH1        ;Assert when SCNT=00 in Td
+      + /S1W1 * /S1W0 * DMAADS              ;Assert at end of Ta on
+                * /DEN * HLDA * /PH1        ; zero wait state DMA
+                                            ; bus cycles.
+      + /S1W1 * /S1W0 * CPUADS              ;Assert at end of Ta on
+                * /DEN * /HLDA * /WRSTR     ; zero wait state CPU
+                * /PH1                      ; bus cycles (write stretching
+                                            ; disabled).
+      + /S1W1 * /S1W0 * CPUADS              ;Assert at end of Ta on
+                * /DEN * /HLDA * WRSTR      ; zero wait state CPU
+                * CPUW_R * /PH1             ; bus cycles (write stretching
+                                            ; enabled, read operation).
+      + SRDY * PH1                          ;Hold on C edge.
+
+/TCLK := TCLK * PH1                         ;Transition on C edge.
+       + /TCLK * /PH1                       ;Hold on A edge.

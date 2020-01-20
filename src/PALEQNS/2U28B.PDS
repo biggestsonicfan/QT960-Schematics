@@ -1,0 +1,84 @@
+TITLE Flash EPROM Wait State Counter 
+REVISION B
+AUTHOR Brent Bolton
+COMPANY Intel Corporation
+DATE 2/20/89
+
+;  This device implements the three bit wait state counter for Flash
+;  EPROM. Prior to the start of a bus cycle the counter contains the
+;  number of wait states to be inserted into the each data cycle. Unlike
+;  the SRAM and high speed EPROM wait state counters the Flash EPROM 
+;  wait state counter inserts the same number of wait states into both
+;  first and burst data cycles. The counter is reloaded one CLK1
+;  prior to the end of the each data cycle. The output of the counter
+;  is decoded to generate the ready signal for input to PAL U25.
+ 
+CHIP 2U28B PAL16R6
+;SPEED 15nS
+  
+;PINS
+;1      2       3       4       5
+ CLK2   /PH1    HLDA    /DEN    /CPUADS
+
+;6      7       8       9       10
+/DMAADS FWAIT0  FWAIT1  FWAIT2  GND
+
+;11     12      13      14      15
+ OE     NC      FCNT2   FCNT1   FCNT0
+
+;16     17      18      19      20
+ NC     /DL2ADS /FRDY   /DLYADS VCC
+ 
+;INPUTS: CLK2           System clock
+;        PH1#           Phase 1 of bus cycle (overlaps CLK2 edges B and C)
+;        HLDA           Hold acknowledge from 80960KB
+;        DEN            Combined Data Enable (CPUDEN# + DMADEN#)
+;        CPUADS#        80960KB Address and Data Strobe
+;        DMAADS#        82380 Address and Data Strobe
+;        FWAIT[0..2]    Flash EPROM wait state count
+;        DLYADS#        CPUADS# delayed by one CLK1
+
+;OUTPUTS:FCNT[0..2]     Flash EPROM wait state counter
+;        FRDY#          Flash EPROM ready
+;        DLY2ADS#       CPUADS# delayed by two CLK1s
+
+EQUATIONS
+
+/FCNT2 := FWAIT2 * /FWAIT1 * /FWAIT0        ;Load and decrement cycle
+                * /DEN * /PH1               ; count at end of Ta.
+        + /FWAIT2 * FWAIT1 * /DEN * /PH1    ;Load and hold cycle count
+                                            ; at end of Ta.
+        + /FWAIT2 * FWAIT0 * /DEN * /PH1    ;
+                                            ;
+        + /FWAIT2 * DEN * /FCNT2 * /FCNT1   ;Load cycle count
+                * /FCNT0 * /PH1             ; when FCNT=000 in Td.
+        + FCNT2 * /FCNT1 * /FCNT0 * DEN     ;Decrement cycle count
+                * /PH1                      ; in Td.
+        + /FCNT2 * FCNT1 * DEN * /PH1       ;Hold cycle count
+        + /FCNT2 * FCNT0 * DEN * /PH1       ; in Td.
+        + /FCNT2 * PH1                      ;Hold on C edge.
+
+/FCNT1 := FWAIT1 * /FWAIT0 * /DEN * /PH1    ;Load and decrement first
+                                            ; cycle count at end of Ta.
+        + /FWAIT1 * FWAIT0 * /DEN * /PH1    ;Load and hold first cycle
+                                            ; count at end of Ta.
+        + /FWAIT1 * DEN * /FCNT2 * /FCNT1   ;Load cycle count
+                * /FCNT0 * /PH1             ; when FCNT=000 in Td.
+        + FCNT1 * /FCNT0 * DEN * /PH1       ;Decrement cycle count in Td.
+        + /FCNT1 * FCNT0 * DEN * /PH1       ;Hold cycle count in Td.
+        + /FCNT1 * PH1                      ;Hold on C edge.
+
+/FCNT0 := FWAIT0 * /DEN * /PH1              ;Load and decrement cycle
+                                            ; count at end of Ta.
+        + /FWAIT0 * DEN * /FCNT2 * /FCNT1   ;Load cycle count
+                * /FCNT0 * /PH1             ; when FCNT=000 in Td.
+        + FCNT0 * DEN * /PH1                ;Decrement cycle count in Td.
+        + /FCNT0 * PH1                      ;Hold on C edge.
+
+FRDY := /FCNT2 * /FCNT1 * /FCNT0 * DEN      ;Assert when FCNT=000 in Td.
+               * /PH1                       ;
+      + FRDY * PH1                          ;Hold on C edge.
+
+DL2ADS := DLYADS * /PH1                     ;Set on A edge.
+        + DL2ADS * PH1                      ;Hold on C edge.
+
